@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#111c38">
+<meta name="description" content="Live status, countdowns and session timeline for 9 stock exchanges">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%90%3C/text%3E%3C/svg%3E">
+<title>World Trading Clock</title>
+<style>
+:root {
+    --surface: #212a3e;
+    --surface-2: #2b3550;
+    --track: #161d2e;
+    --ink: #ffffff;
+    --ink-2: #c9cdd9;
+    --ink-3: #8e94a6;
+    --hairline: rgba(255,255,255,0.12);
+    --grid: #38425e;
+    --good: #0ca30c;
+    --good-bg: rgba(12,163,12,0.12);
+    --warn: #fab219;
+    --warn-bg: rgba(250,178,25,0.10);
+    --serious: #ec835a;
+    --serious-bg: rgba(236,131,90,0.10);
+    --accent: #3987e5;
+    --accent-dim: #3d5b94;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: linear-gradient(135deg, #0c1424 0%, #1c3272 48%, #0c1424 100%) fixed;
+    min-height: 100vh;
+    color: var(--ink-2);
+}
+.wrap { max-width: 1240px; margin: 0 auto; padding: 28px 20px 40px; }
+
+/* ---------- header ---------- */
+.header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+.header h1 { color: var(--ink); font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+.header .sub { color: var(--ink-3); font-size: 13px; margin-top: 3px; }
+.clock-box { text-align: right; }
+.clock-box .time { color: var(--ink); font-size: 30px; font-weight: 700; font-family: var(--mono); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.clock-box .date { color: var(--ink-3); font-size: 13px; margin-top: 2px; }
+
+/* ---------- timeline ---------- */
+.panel { background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; padding: 18px; margin-bottom: 24px; box-shadow: 0 14px 34px rgba(0,0,0,0.40); }
+.panel h2 { color: var(--ink); font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+.panel .note { color: var(--ink-3); font-size: 12px; margin-bottom: 14px; }
+.tl-axis { position: relative; height: 16px; margin-left: 150px; margin-right: 8px; }
+.tl-axis span { position: absolute; transform: translateX(-50%); color: var(--ink-3); font-size: 10px; font-family: var(--mono); }
+@media (max-width: 600px) { .tl-axis span:nth-child(even) { display: none; } }
+.tl-row { display: flex; align-items: center; height: 30px; }
+.tl-label { width: 150px; flex-shrink: 0; display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; }
+.tl-label .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--grid); flex-shrink: 0; }
+.tl-label .dot.on { background: var(--good); }
+.tl-label .dot.lunch { background: var(--warn); }
+.tl-track { position: relative; flex: 1; height: 14px; background: var(--track); border-radius: 4px; margin-right: 8px; overflow: hidden; }
+.tl-seg { position: absolute; top: 0; bottom: 0; background: var(--accent-dim); border-radius: 3px; }
+.tl-seg.on { background: var(--good); }
+.tl-now { position: absolute; top: -20px; bottom: 0; width: 2px; background: var(--ink); opacity: 0.85; z-index: 2; pointer-events: none; }
+.tl-closed-note { color: var(--ink-3); font-size: 11px; font-style: italic; }
+.tl-body { position: relative; }
+.tl-legend { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
+.tl-legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-3); }
+.tl-legend i { width: 14px; height: 8px; border-radius: 2px; display: inline-block; }
+
+/* ---------- cards ---------- */
+.grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 720px)  { .grid { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1080px) { .grid { grid-template-columns: 1fr 1fr 1fr; } }
+.card {
+    background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 90px);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    padding: 18px;
+    border-top: 3px solid var(--grid);
+    display: flex; flex-direction: column;
+    box-shadow: 0 14px 30px rgba(0,0,0,0.38);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.card:hover { transform: translateY(-2px); box-shadow: 0 20px 40px rgba(0,0,0,0.48); }
+.card.open { border-top-color: var(--good); }
+.card.lunch { border-top-color: var(--warn); }
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.card-head-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.flag { width: 34px; height: 24px; border-radius: 3px; overflow: hidden; flex-shrink: 0; box-shadow: 0 0 0 1px var(--hairline); }
+.flag svg { display: block; width: 100%; height: 100%; }
+.ex-name { font-size: 15px; font-weight: 650; color: var(--ink); line-height: 1.2; }
+.ex-loc { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
+.badge { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; white-space: nowrap; background: var(--surface-2); color: var(--ink-3); border: 1px solid var(--hairline); }
+.badge.open { background: var(--good-bg); color: var(--good); border-color: rgba(12,163,12,0.35); }
+.badge.lunch { background: var(--warn-bg); color: var(--warn); border-color: rgba(250,178,25,0.35); }
+.badge.holiday { background: var(--serious-bg); color: var(--serious); border-color: rgba(236,131,90,0.35); }
+.ex-time { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 26px; color: var(--ink); font-weight: 600; line-height: 1.1; }
+.ex-time-label { font-size: 11px; color: var(--ink-3); margin-bottom: 2px; }
+.countdown { border-radius: 8px; padding: 9px 12px; margin: 12px 0; border: 1px solid var(--hairline); background: var(--surface-2); }
+.countdown p { font-size: 13px; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.countdown.cd-open { background: var(--good-bg); border-color: rgba(12,163,12,0.3); } .countdown.cd-open p { color: #4ad04a; }
+.countdown.cd-lunch { background: var(--warn-bg); border-color: rgba(250,178,25,0.3); } .countdown.cd-lunch p { color: var(--warn); }
+.countdown.cd-holiday { background: var(--serious-bg); border-color: rgba(236,131,90,0.3); } .countdown.cd-holiday p { color: var(--serious); }
+.hours { border-top: 1px solid var(--hairline); padding-top: 10px; font-size: 12px; }
+.hours .h-row { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
+.hours .h-key { color: var(--ink-3); }
+.hours .h-val { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink-2); text-align: right; }
+.session-note { font-size: 11px; color: var(--warn); margin-top: 6px; }
+.holiday-row { border-top: 1px solid var(--hairline); margin-top: 10px; padding-top: 9px; display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
+.holiday-row .h-key { color: var(--ink-3); }
+.holiday-row .h-val { color: var(--ink-2); text-align: right; }
+.footer { margin-top: 26px; text-align: center; color: var(--ink-3); font-size: 12px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+    <div class="header">
+        <div>
+            <h1>World Trading Clock</h1>
+            <p class="sub">Holiday-aware market status &middot; 9 exchanges</p>
+        </div>
+        <div class="clock-box">
+            <p class="time" id="local-time">--:--:--</p>
+            <p class="date" id="local-date"></p>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>Today's sessions <span style="color:var(--ink-3);font-weight:400" id="tl-tz-label"></span></h2>
+        <p class="note">Each bar is a trading session mapped to your local time. The vertical line is now.</p>
+        <div class="tl-axis" id="tl-axis"></div>
+        <div class="tl-body" id="tl-body"></div>
+        <div class="tl-legend">
+            <span><i style="background:var(--good)"></i> Open now</span>
+            <span><i style="background:var(--accent-dim)"></i> Session (closed / not yet open)</span>
+            <span><i style="background:var(--track);border:1px solid var(--hairline)"></i> No trading today</span>
+        </div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+
+    <div class="footer">
+        <p>Times update every second. OPEN/CLOSED accounts for weekends, exchange holidays and half days (calendars embedded through 2027).</p>
+        <p>Hong Kong and Tokyo pause for lunch. Hong Kong half days close at noon, Stockholm half days at 13:00. Nasdaq trades NYSE hours.</p>
+    </div>
+</div>
+
+<script>
+'use strict';
+/* =====================  DATA  ===================== */
+
+const userTimezone = (() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York'; }
+    catch (e) { return 'America/New_York'; }
+})();
+const tzCity = userTimezone.split('/').pop().replace(/_/g, ' ');
+
+// Times are exchange-local "HH:MM". holidays: full closures. halfDays: early close.
+// specialDays: overrides open and/or close.
+const exchanges = [
+    { code: 'NYSE', name: 'NYSE / Nasdaq', location: 'New York', tz: 'America/New_York', flag: 'us',
+      open: '09:30', close: '16:00',
+      holidays: { '2026-09-07': 'Labor Day', '2026-11-26': 'Thanksgiving Day', '2026-12-25': 'Christmas Day', '2027-01-01': "New Year's Day", '2027-01-18': 'MLK Jr. Day', '2027-02-15': "Washington's Birthday", '2027-03-26': 'Good Friday', '2027-05-31': 'Memorial Day', '2027-06-18': 'Juneteenth (obs.)', '2027-07-05': 'Independence Day (obs.)', '2027-09-06': 'Labor Day', '2027-11-25': 'Thanksgiving Day', '2027-12-24': 'Christmas Day (obs.)' },
+      halfDays: { '2026-11-27': { close: '13:00', name: 'Day after Thanksgiving' }, '2026-12-24': { close: '13:00', name: 'Christmas Eve' }, '2027-11-26': { close: '13:00', name: 'Day after Thanksgiving' } } },
+    { code: 'TSX', name: 'Toronto Stock Exchange', location: 'Toronto', tz: 'America/Toronto', flag: 'ca',
+      open: '09:30', close: '16:00',
+      holidays: { '2026-09-07': 'Labour Day', '2026-10-12': 'Thanksgiving (CA)', '2026-12-25': 'Christmas Day', '2026-12-28': 'Boxing Day (in lieu)', '2027-01-01': "New Year's Day", '2027-02-15': 'Family Day', '2027-03-26': 'Good Friday', '2027-05-24': 'Victoria Day', '2027-07-01': 'Canada Day', '2027-08-02': 'Civic Holiday', '2027-09-06': 'Labour Day', '2027-10-11': 'Thanksgiving (CA)', '2027-12-27': 'Christmas Day (in lieu)', '2027-12-28': 'Boxing Day (in lieu)' },
+      halfDays: { '2026-12-24': { close: '13:00', name: 'Christmas Eve early close' }, '2027-12-24': { close: '13:00', name: 'Christmas Eve early close' } } },
+    { code: 'LSE', name: 'London Stock Exchange', location: 'London', tz: 'Europe/London', flag: 'gb',
+      open: '08:00', close: '16:30',
+      holidays: { '2026-08-31': 'Summer Bank Holiday', '2026-12-25': 'Christmas Day', '2026-12-28': 'Boxing Day (sub.)', '2027-01-01': "New Year's Day", '2027-03-26': 'Good Friday', '2027-03-29': 'Easter Monday', '2027-05-03': 'Early May Bank Holiday', '2027-05-31': 'Spring Bank Holiday', '2027-08-30': 'Summer Bank Holiday', '2027-12-27': 'Christmas Day (sub.)', '2027-12-28': 'Boxing Day (sub.)' },
+      halfDays: { '2026-12-24': { close: '12:30', name: 'Christmas Eve early close' }, '2026-12-31': { close: '12:30', name: "New Year's Eve early close" }, '2027-12-24': { close: '12:30', name: 'Christmas Eve early close' }, '2027-12-31': { close: '12:30', name: "New Year's Eve early close" } } },
+    { code: 'XETRA', name: 'Deutsche Börse (Xetra)', location: 'Frankfurt', tz: 'Europe/Berlin', flag: 'de',
+      open: '09:00', close: '17:30',
+      holidays: { '2026-12-24': 'Christmas Eve', '2026-12-25': 'Christmas Day', '2026-12-31': "New Year's Eve", '2027-01-01': "New Year's Day", '2027-03-26': 'Good Friday', '2027-03-29': 'Easter Monday', '2027-12-24': 'Christmas Eve', '2027-12-31': "New Year's Eve" },
+      halfDays: {} },
+    { code: 'OMX', name: 'Nasdaq Stockholm', location: 'Stockholm', tz: 'Europe/Stockholm', flag: 'se',
+      open: '09:00', close: '17:30',
+      holidays: { '2026-12-24': 'Christmas Eve', '2026-12-25': 'Christmas Day', '2026-12-31': "New Year's Eve", '2027-01-01': "New Year's Day", '2027-01-06': 'Epiphany', '2027-03-26': 'Good Friday', '2027-03-29': 'Easter Monday', '2027-05-06': 'Ascension Day', '2027-06-25': 'Midsummer Eve', '2027-12-24': 'Christmas Eve', '2027-12-31': "New Year's Eve" },
+      halfDays: { '2026-10-30': { close: '13:00', name: "All Saints' Eve early close" }, '2027-01-05': { close: '13:00', name: 'Epiphany Eve early close' }, '2027-03-25': { close: '13:00', name: 'Maundy Thursday early close' }, '2027-04-30': { close: '13:00', name: 'Walpurgis Eve early close' }, '2027-05-05': { close: '13:00', name: 'Ascension Eve early close' }, '2027-11-05': { close: '13:00', name: "All Saints' Eve early close" } } },
+    { code: 'HKEX', name: 'Hong Kong Stock Exchange', location: 'Hong Kong', tz: 'Asia/Hong_Kong', flag: 'hk',
+      open: '09:30', close: '16:00', lunch: { start: '12:00', end: '13:00' },
+      holidays: { '2026-10-01': 'National Day', '2026-10-19': 'Chung Yeung Festival (obs.)', '2026-12-25': 'Christmas Day', '2027-01-01': "New Year's Day", '2027-02-08': 'Lunar New Year (3rd day)', '2027-02-09': 'Lunar New Year (sub.)', '2027-03-26': 'Good Friday', '2027-03-29': 'Easter Monday', '2027-04-05': 'Ching Ming Festival', '2027-05-13': "Buddha's Birthday", '2027-06-09': 'Tuen Ng Festival', '2027-07-01': 'HKSAR Establishment Day', '2027-09-16': 'Day after Mid-Autumn', '2027-10-01': 'National Day', '2027-10-08': 'Chung Yeung Festival', '2027-12-27': 'Christmas (obs.)' },
+      halfDays: { '2026-12-24': { close: '12:00', name: 'Christmas Eve half day' }, '2026-12-31': { close: '12:00', name: "New Year's Eve half day" }, '2027-02-05': { close: '12:00', name: 'Lunar New Year Eve half day' }, '2027-12-24': { close: '12:00', name: 'Christmas Eve half day' }, '2027-12-31': { close: '12:00', name: "New Year's Eve half day" } } },
+    { code: 'TSE', name: 'Tokyo Stock Exchange', location: 'Tokyo', tz: 'Asia/Tokyo', flag: 'jp',
+      open: '09:00', close: '15:30', lunch: { start: '11:30', end: '12:30' },
+      holidays: { '2026-09-21': 'Respect for the Aged Day', '2026-09-22': "Citizens' Holiday", '2026-09-23': 'Autumnal Equinox', '2026-10-12': 'Sports Day', '2026-11-03': 'Culture Day', '2026-11-23': 'Labor Thanksgiving', '2026-12-31': 'Year-end closure', '2027-01-01': "New Year's Day", '2027-01-11': 'Coming of Age Day', '2027-02-11': 'National Foundation Day', '2027-02-23': "Emperor's Birthday", '2027-03-22': 'Vernal Equinox (obs.)', '2027-04-29': 'Showa Day', '2027-05-03': 'Constitution Memorial Day', '2027-05-04': 'Greenery Day', '2027-05-05': "Children's Day", '2027-07-19': 'Marine Day', '2027-08-11': 'Mountain Day', '2027-09-20': 'Respect for the Aged Day', '2027-09-23': 'Autumnal Equinox', '2027-10-11': 'Sports Day', '2027-11-03': 'Culture Day', '2027-11-23': 'Labor Thanksgiving', '2027-12-31': 'Year-end closure' },
+      halfDays: {} },
+    { code: 'KRX', name: 'Korea Exchange', location: 'Seoul', tz: 'Asia/Seoul', flag: 'kr',
+      open: '09:00', close: '15:30',
+      holidays: { '2026-09-24': 'Chuseok holiday', '2026-09-25': 'Chuseok', '2026-10-05': 'National Foundation Day (sub.)', '2026-10-09': 'Hangul Day', '2026-12-25': 'Christmas Day', '2026-12-31': 'Year-end closure', '2027-01-01': "New Year's Day", '2027-02-08': 'Seollal holiday', '2027-02-09': 'Seollal (sub.)', '2027-03-01': 'Independence Movement Day', '2027-05-05': "Children's Day", '2027-05-13': "Buddha's Birthday", '2027-08-16': 'Liberation Day (sub.)', '2027-09-14': 'Chuseok holiday', '2027-09-15': 'Chuseok', '2027-09-16': 'Chuseok holiday', '2027-10-04': 'National Foundation Day (sub.)', '2027-10-11': 'Hangul Day (sub.)', '2027-12-27': 'Christmas (sub.)', '2027-12-31': 'Year-end closure' },
+      halfDays: {},
+      specialDays: { '2026-11-19': { open: '10:00', close: '16:30', name: 'CSAT exam day · delayed open' }, '2027-11-18': { open: '10:00', close: '16:30', name: 'CSAT exam day · delayed open' } } },
+    { code: 'ASX', name: 'Australian Securities Exchange', location: 'Sydney', tz: 'Australia/Sydney', flag: 'au',
+      open: '10:00', close: '16:00',
+      holidays: { '2026-12-25': 'Christmas Day', '2026-12-28': 'Boxing Day (obs.)', '2027-01-01': "New Year's Day", '2027-01-26': 'Australia Day', '2027-03-26': 'Good Friday', '2027-03-29': 'Easter Monday', '2027-06-14': "King's Birthday", '2027-12-27': 'Christmas Day (obs.)', '2027-12-28': 'Boxing Day (obs.)' },
+      halfDays: { '2026-12-24': { close: '14:10', name: 'Christmas Eve early close' }, '2026-12-31': { close: '14:10', name: "New Year's Eve early close" }, '2027-12-24': { close: '14:10', name: 'Christmas Eve early close' }, '2027-12-31': { close: '14:10', name: "New Year's Eve early close" } } }
+];
+
+/* =====================  SVG FLAGS  ===================== */
+const flags = {
+    us: '<svg viewBox="0 0 60 40"><rect width="60" height="40" fill="#fff"/><g fill="#B22234"><rect y="0" width="60" height="3.08"/><rect y="6.15" width="60" height="3.08"/><rect y="12.31" width="60" height="3.08"/><rect y="18.46" width="60" height="3.08"/><rect y="24.62" width="60" height="3.08"/><rect y="30.77" width="60" height="3.08"/><rect y="36.92" width="60" height="3.08"/></g><rect width="24" height="21.5" fill="#3C3B6E"/><g fill="#fff"><circle cx="4" cy="4" r="1.1"/><circle cx="12" cy="4" r="1.1"/><circle cx="20" cy="4" r="1.1"/><circle cx="8" cy="8" r="1.1"/><circle cx="16" cy="8" r="1.1"/><circle cx="4" cy="12" r="1.1"/><circle cx="12" cy="12" r="1.1"/><circle cx="20" cy="12" r="1.1"/><circle cx="8" cy="16" r="1.1"/><circle cx="16" cy="16" r="1.1"/></g></svg>',
+    ca: '<svg viewBox="0 0 60 40"><rect width="60" height="40" fill="#fff"/><rect width="15" height="40" fill="#D80621"/><rect x="45" width="15" height="40" fill="#D80621"/><path fill="#D80621" d="M30 8l1.8 4 2.6-1-1 3.6 3.6-.6-2.2 3 3.8 1.6-3.4 1.6.8 2.6-3.6-1-.6 4.2h-1.6l-.6-4.2-3.6 1 .8-2.6-3.4-1.6 3.8-1.6-2.2-3 3.6.6-1-3.6 2.6 1z"/></svg>',
+    gb: '<svg viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0,0 60,40 M60,0 0,40" stroke="#fff" stroke-width="8"/><path d="M0,0 60,40 M60,0 0,40" stroke="#C8102E" stroke-width="4"/><path d="M30,0 V40 M0,20 H60" stroke="#fff" stroke-width="13"/><path d="M30,0 V40 M0,20 H60" stroke="#C8102E" stroke-width="8"/></svg>',
+    de: '<svg viewBox="0 0 60 40"><rect width="60" height="13.33" fill="#000"/><rect y="13.33" width="60" height="13.33" fill="#DD0000"/><rect y="26.66" width="60" height="13.34" fill="#FFCE00"/></svg>',
+    se: '<svg viewBox="0 0 60 40"><rect width="60" height="40" fill="#006AA7"/><rect x="19" width="8" height="40" fill="#FECC02"/><rect y="16" width="60" height="8" fill="#FECC02"/></svg>',
+    hk: '<svg viewBox="0 0 60 40"><rect width="60" height="40" fill="#DE2910"/><g fill="#fff" transform="translate(30,20)"><ellipse cx="0" cy="-6.5" rx="3.2" ry="6.8"/><ellipse cx="0" cy="-6.5" rx="3.2" ry="6.8" transform="rotate(72)"/><ellipse cx="0" cy="-6.5" rx="3.2" ry="6.8" transform="rotate(144)"/><ellipse cx="0" cy="-6.5" rx="3.2" ry="6.8" transform="rotate(216)"/><ellipse cx="0" cy="-6.5" rx="3.2" ry="6.8" transform="rotate(288)"/></g></svg>',
+    jp: '<svg viewBox="0 0 60 40"><rect width="60" height="40" fill="#fff"/><circle cx="30" cy="20" r="9" fill="#BC002D"/></svg>',
+    kr: '<svg viewBox="0 0 60 40"><rect width="60" height="40" fill="#fff"/><g transform="translate(30,20) rotate(-33)"><circle r="8" fill="#CD2E3A"/><path d="M-8,0 A8,8 0 0,0 8,0 Z" fill="#0047A0"/><circle cx="-4" cy="0" r="4" fill="#CD2E3A"/><circle cx="4" cy="0" r="4" fill="#0047A0"/></g><g stroke="#000" stroke-width="1.6"><g transform="translate(11,8) rotate(-33)"><path d="M-4,-3 H4 M-4,0 H4 M-4,3 H4"/></g><g transform="translate(49,32) rotate(-33)"><path d="M-4,-3 H-.5 M.5,-3 H4 M-4,0 H-.5 M.5,0 H4 M-4,3 H-.5 M.5,3 H4"/></g><g transform="translate(49,8) rotate(33)"><path d="M-4,-3 H-.5 M.5,-3 H4 M-4,0 H4 M-4,3 H-.5 M.5,3 H4"/></g><g transform="translate(11,32) rotate(33)"><path d="M-4,-3 H4 M-4,0 H-.5 M.5,0 H4 M-4,3 H4"/></g></g></svg>',
+    au: '<svg viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><g><path d="M0,0 26,17 M26,0 0,17" stroke="#fff" stroke-width="4"/><path d="M0,0 26,17 M26,0 0,17" stroke="#C8102E" stroke-width="1.8"/><path d="M13,0 V17 M0,8.5 H26" stroke="#fff" stroke-width="5.5"/><path d="M13,0 V17 M0,8.5 H26" stroke="#C8102E" stroke-width="3"/></g><g fill="#fff"><circle cx="13" cy="29" r="2.6"/><circle cx="44" cy="8" r="1.5"/><circle cx="51" cy="15" r="1.5"/><circle cx="44" cy="30" r="1.5"/><circle cx="38" cy="20" r="1.5"/><circle cx="48" cy="22" r="1"/></g></svg>'
+};
+
+/* =====================  TIME HELPERS  ===================== */
+
+// Optional simulated clock for testing: ?at=2026-12-24T14:00:00
+const simParam = new URLSearchParams(location.search).get('at');
+const simBase = simParam ? new Date(simParam) : null;
+const simStart = Date.now();
+const nowDate = () => simBase ? new Date(simBase.getTime() + (Date.now() - simStart)) : new Date();
+
+const dtfCache = {};
+function partsIn(tz, date) {
+    if (!dtfCache[tz]) {
+        dtfCache[tz] = new Intl.DateTimeFormat('en-CA', {
+            timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, weekday: 'short'
+        });
+    }
+    const o = {};
+    for (const p of dtfCache[tz].formatToParts(date)) o[p.type] = p.value;
+    const dowMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    return {
+        key: o.year + '-' + o.month + '-' + o.day,
+        dow: dowMap[o.weekday],
+        weekday: o.weekday,
+        h: +o.hour % 24, mi: +o.minute, s: +o.second
+    };
+}
+const toMin = (hm) => { const [h, m] = hm.split(':').map(Number); return h * 60 + m; };
+const toSec = (hm) => toMin(hm) * 60;
+const pad = (n) => String(n).padStart(2, '0');
+const fmtHM = (mins) => pad(Math.floor(mins / 60) % 24) + ':' + pad(mins % 60);
+
+function fmtClock(date, tz) {
+    const p = partsIn(tz, date);
+    return pad(p.h) + ':' + pad(p.mi) + ':' + pad(p.s);
+}
+function fmtLongDate(date, tz) {
+    return new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(date);
+}
+
+/* =====================  MARKET LOGIC  ===================== */
+
+// The session (or closure) for an exchange on a given exchange-local date.
+function sessionFor(ex, key, dow) {
+    if (dow === 0 || dow === 6) return { closed: 'weekend' };
+    if (ex.holidays[key]) return { closed: 'holiday', name: ex.holidays[key] };
+    let open = ex.open, close = ex.close, lunch = ex.lunch || null, note = null;
+    if (ex.fridayClose && dow === 5) { close = ex.fridayClose; note = 'Friday short session'; }
+    const sp = ex.specialDays && ex.specialDays[key];
+    if (sp) { if (sp.open) open = sp.open; if (sp.close) close = sp.close; note = sp.name; }
+    const hd = ex.halfDays[key];
+    if (hd) { close = hd.close; note = hd.name; }
+    if (lunch && toMin(close) <= toMin(lunch.end)) lunch = null;
+    return { open, close, lunch, note };
+}
+
+// Find the next session open, scanning up to 21 days ahead.
+function nextOpen(ex, now, curSec) {
+    for (let d = 0; d <= 21; d++) {
+        const p = partsIn(ex.tz, new Date(now.getTime() + d * 86400000));
+        const sess = sessionFor(ex, p.key, p.dow);
+        if (sess.closed) continue;
+        const openS = toSec(sess.open);
+        if (d === 0 && (curSec >= openS)) continue;
+        return { days: d, weekday: p.weekday, session: sess, secondsUntil: d * 86400 + openS - curSec };
+    }
+    return null;
+}
+
+function fmtDur(sec) {
+    if (sec < 0) sec = 0;
+    const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600),
+          m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    if (d > 0) return d + 'd ' + h + 'h ' + m + 'm';
+    if (h > 0) return h + 'h ' + m + 'm ' + pad(s) + 's';
+    return m + 'm ' + pad(s) + 's';
+}
+
+// Full current status of an exchange.
+function statusOf(ex, now) {
+    const p = partsIn(ex.tz, now);
+    const curSec = p.h * 3600 + p.mi * 60 + p.s;
+    const sess = sessionFor(ex, p.key, p.dow);
+
+    const mkNext = () => {
+        const nx = nextOpen(ex, now, curSec);
+        if (!nx) return { msg: 'No upcoming session found', cls: 'cd-closed' };
+        const when = nx.days === 0 ? 'today ' + nx.session.open
+                   : (nx.days === 1 ? 'tomorrow (' + nx.weekday + ') ' + nx.session.open
+                                    : nx.weekday + ' ' + nx.session.open);
+        return { msg: 'Opens ' + when + ' · in ' + fmtDur(nx.secondsUntil), cls: 'cd-closed' };
+    };
+
+    if (sess.closed === 'weekend') {
+        const n = mkNext();
+        return { state: 'closed', badge: 'CLOSED', badgeCls: '', cardCls: '', dotCls: '',
+                 msg: 'Weekend · ' + n.msg, cdCls: '', session: null, parts: p };
+    }
+    if (sess.closed === 'holiday') {
+        const n = mkNext();
+        return { state: 'holiday', badge: 'HOLIDAY', badgeCls: 'holiday', cardCls: '', dotCls: '',
+                 msg: sess.name + ' · ' + n.msg, cdCls: 'cd-holiday', session: null, parts: p };
+    }
+
+    const openS = toSec(sess.open), closeS = toSec(sess.close);
+    const noteSuffix = sess.note ? ' · ' + sess.note : '';
+
+    if (curSec < openS) {
+        return { state: 'pre', badge: 'CLOSED', badgeCls: '', cardCls: '', dotCls: '',
+                 msg: 'Opens in ' + fmtDur(openS - curSec) + noteSuffix, cdCls: '', session: sess, parts: p };
+    }
+    if (sess.lunch) {
+        const lsS = toSec(sess.lunch.start), leS = toSec(sess.lunch.end);
+        if (curSec >= lsS && curSec < leS) {
+            return { state: 'lunch', badge: 'LUNCH', badgeCls: 'lunch', cardCls: 'lunch', dotCls: 'lunch',
+                     msg: 'Lunch break · resumes in ' + fmtDur(leS - curSec), cdCls: 'cd-lunch', session: sess, parts: p };
+        }
+        if (curSec >= openS && curSec < lsS) {
+            return { state: 'open', badge: 'OPEN', badgeCls: 'open', cardCls: 'open', dotCls: 'on',
+                     msg: 'Morning session · lunch in ' + fmtDur(lsS - curSec), cdCls: 'cd-open', session: sess, parts: p };
+        }
+        if (curSec >= leS && curSec < closeS) {
+            return { state: 'open', badge: 'OPEN', badgeCls: 'open', cardCls: 'open', dotCls: 'on',
+                     msg: 'Afternoon session · closes in ' + fmtDur(closeS - curSec), cdCls: 'cd-open', session: sess, parts: p };
+        }
+    }
+    if (curSec >= openS && curSec < closeS) {
+        return { state: 'open', badge: 'OPEN', badgeCls: 'open', cardCls: 'open', dotCls: 'on',
+                 msg: 'Closes in ' + fmtDur(closeS - curSec) + noteSuffix, cdCls: 'cd-open', session: sess, parts: p };
+    }
+    const n = mkNext();
+    return { state: 'after', badge: 'CLOSED', badgeCls: '', cardCls: '', dotCls: '',
+             msg: 'Closed for today · ' + n.msg, cdCls: '', session: sess, parts: p };
+}
+
+// Next upcoming holiday (or half day) for the card footer.
+function nextHoliday(ex, todayKey) {
+    const entries = [];
+    for (const k in ex.holidays) entries.push([k, ex.holidays[k]]);
+    for (const k in ex.halfDays) entries.push([k, ex.halfDays[k].name + ' (half day)']);
+    if (ex.specialDays) for (const k in ex.specialDays) entries.push([k, ex.specialDays[k].name]);
+    entries.sort((a, b) => a[0] < b[0] ? -1 : 1);
+    for (const [k, name] of entries) {
+        if (k >= todayKey) {
+            const [y, m, d] = k.split('-').map(Number);
+            const label = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+                .format(new Date(Date.UTC(y, m - 1, d)));
+            return name + ' · ' + label;
+        }
+    }
+    return '·';
+}
+
+// Minutes-of-day offset between user tz and exchange tz (from current wall clocks).
+function tzDiffMin(exTz, now) {
+    const u = partsIn(userTimezone, now), e = partsIn(exTz, now);
+    let diff = (u.h * 60 + u.mi) - (e.h * 60 + e.mi);
+    // normalize into [-720, 720]
+    if (diff > 720) diff -= 1440;
+    if (diff < -720) diff += 1440;
+    return diff;
+}
+
+/* =====================  RENDER: STATIC SHELLS  ===================== */
+
+const grid = document.getElementById('grid');
+document.getElementById('tl-tz-label').textContent = '· ' + tzCity + ' time';
+
+exchanges.forEach((ex, i) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.id = 'card-' + i;
+    card.innerHTML =
+        '<div class="card-head">' +
+            '<div class="card-head-left">' +
+                '<div class="flag">' + flags[ex.flag] + '</div>' +
+                '<div><div class="ex-name">' + ex.name + '</div>' +
+                '<div class="ex-loc">' + ex.location + ' · ' + ex.code + '</div></div>' +
+            '</div>' +
+            '<span class="badge" id="badge-' + i + '">·</span>' +
+        '</div>' +
+        '<div><div class="ex-time-label">Local time</div>' +
+        '<div class="ex-time" id="extime-' + i + '">--:--:--</div></div>' +
+        '<div class="countdown" id="cd-' + i + '"><p id="cdmsg-' + i + '">…</p></div>' +
+        '<div class="hours">' +
+            '<div class="h-row"><span class="h-key">Hours (' + ex.location + ')</span><span class="h-val" id="hloc-' + i + '"></span></div>' +
+            (ex.tz === userTimezone ? '<div class="h-row" style="display:none"><span class="h-val" id="husr-' + i + '"></span></div>'
+                                    : '<div class="h-row"><span class="h-key">Hours (' + tzCity + ')</span><span class="h-val" id="husr-' + i + '"></span></div>') +
+            '<div id="snote-' + i + '"></div>' +
+        '</div>' +
+        '<div class="holiday-row"><span class="h-key">Next holiday</span><span class="h-val" id="hol-' + i + '"></span></div>';
+    grid.appendChild(card);
+});
+
+// Timeline axis (every 3 hours)
+const axis = document.getElementById('tl-axis');
+for (let h = 0; h <= 24; h += 3) {
+    const s = document.createElement('span');
+    s.style.left = (h / 24 * 100) + '%';
+    s.textContent = pad(h % 24) + ':00';
+    axis.appendChild(s);
+}
+const tlBody = document.getElementById('tl-body');
+exchanges.forEach((ex, i) => {
+    const row = document.createElement('div');
+    row.className = 'tl-row';
+    row.id = 'tlrow-' + i;
+    row.innerHTML =
+        '<div class="tl-label"><span class="dot" id="tldot-' + i + '"></span>' + ex.code + ' · ' + ex.location + '</div>' +
+        '<div class="tl-track" id="tltrack-' + i + '"></div>';
+    tlBody.appendChild(row);
+});
+// One shared "now" line overlaying all tracks
+const nowLine = document.createElement('div');
+nowLine.className = 'tl-now';
+nowLine.id = 'tl-nowline';
+tlBody.style.position = 'relative';
+tlBody.appendChild(nowLine);
+
+/* =====================  RENDER: TICK  ===================== */
+
+function hoursLabel(sess, ex) {
+    if (!sess) return '·';
+    if (sess.lunch) return sess.open + '–' + sess.lunch.start + ' · ' + sess.lunch.end + '–' + sess.close;
+    return sess.open + '–' + sess.close;
+}
+function hoursLabelUser(sess, ex, now) {
+    if (!sess) return '·';
+    const diff = tzDiffMin(ex.tz, now);
+    const o = (toMin(sess.open) + diff + 1440) % 1440, c = (toMin(sess.close) + diff + 1440) % 1440;
+    if (sess.lunch) {
+        const ls = (toMin(sess.lunch.start) + diff + 1440) % 1440, le = (toMin(sess.lunch.end) + diff + 1440) % 1440;
+        return fmtHM(o) + '–' + fmtHM(ls) + ' · ' + fmtHM(le) + '–' + fmtHM(c);
+    }
+    return fmtHM(o) + '–' + fmtHM(c);
+}
+
+function segmentsFor(sess, ex, now) {
+    // session segments as [startMin,endMin] in user-local minutes (may wrap midnight)
+    if (!sess) return [];
+    const diff = tzDiffMin(ex.tz, now);
+    const raw = [];
+    if (sess.lunch) {
+        raw.push([toMin(sess.open), toMin(sess.lunch.start)]);
+        raw.push([toMin(sess.lunch.end), toMin(sess.close)]);
+    } else {
+        raw.push([toMin(sess.open), toMin(sess.close)]);
+    }
+    const out = [];
+    for (const [a, b] of raw) {
+        let s = (a + diff + 1440) % 1440, e = (b + diff + 1440) % 1440;
+        if (e >= s) out.push([s, e]);
+        else { out.push([s, 1440]); out.push([0, e]); }
+    }
+    return out;
+}
+
+let lastTlSig = '';
+
+function tick() {
+    const now = nowDate();
+    document.getElementById('local-time').textContent = fmtClock(now, userTimezone);
+    document.getElementById('local-date').textContent = fmtLongDate(now, userTimezone) + ' · ' + tzCity;
+
+    const statuses = exchanges.map(ex => statusOf(ex, now));
+
+    // ---- cards ----
+    statuses.forEach((st, i) => {
+        const ex = exchanges[i];
+        const card = document.getElementById('card-' + i);
+        card.className = 'card ' + st.cardCls;
+        const badge = document.getElementById('badge-' + i);
+        badge.className = 'badge ' + st.badgeCls;
+        badge.textContent = st.badge;
+        document.getElementById('extime-' + i).textContent = fmtClock(now, ex.tz);
+        document.getElementById('cd-' + i).className = 'countdown ' + st.cdCls;
+        document.getElementById('cdmsg-' + i).textContent = st.msg;
+        // hours rows: today's session if there is one, else the regular schedule
+        const displaySess = st.session || { open: ex.open, close: ex.close, lunch: ex.lunch || null };
+        document.getElementById('hloc-' + i).textContent = hoursLabel(displaySess, ex);
+        document.getElementById('husr-' + i).textContent = hoursLabelUser(displaySess, ex, now);
+        const snote = document.getElementById('snote-' + i);
+        const notes = [];
+        if (st.session && st.session.note) notes.push(st.session.note);
+        if (ex.hoursNote) notes.push(ex.hoursNote);
+        snote.innerHTML = notes.length ? '<div class="session-note">' + notes.join(' · ') + '</div>' : '';
+        document.getElementById('hol-' + i).textContent = nextHoliday(ex, st.parts.key);
+        // sort: open/lunch first, then pre-open, then closed
+        const rank = (st.state === 'open') ? 0 : (st.state === 'lunch') ? 1 : (st.state === 'pre') ? 2 : 3;
+        card.style.order = rank * 100 + i;
+    });
+
+    // ---- timeline ----
+    const uParts = partsIn(userTimezone, now);
+    const nowMin = uParts.h * 60 + uParts.mi + uParts.s / 60;
+    document.getElementById('tl-nowline').style.left = 'calc(150px + (100% - 158px) * ' + (nowMin / 1440) + ')';
+
+    const tlData = statuses.map((st, i) => {
+        const segs = segmentsFor(st.session, exchanges[i], now);
+        return { i, st, segs, sortKey: segs.length ? segs[0][0] : 9999 };
+    });
+    tlData.sort((a, b) => a.sortKey - b.sortKey);
+    const sig = tlData.map(d => d.i + ':' + d.st.state + ':' + d.segs.map(s => Math.round(s[0]) + '-' + Math.round(s[1])).join(',')).join('|');
+    if (sig !== lastTlSig) {
+        lastTlSig = sig;
+        tlData.forEach((d, pos) => {
+            const row = document.getElementById('tlrow-' + d.i);
+            row.style.order = pos;
+            const track = document.getElementById('tltrack-' + d.i);
+            const dot = document.getElementById('tldot-' + d.i);
+            dot.className = 'dot ' + d.st.dotCls;
+            if (!d.segs.length) {
+                const reason = d.st.state === 'holiday' ? 'holiday' : 'no trading today';
+                track.innerHTML = '<span class="tl-closed-note" style="position:absolute;left:8px;top:0;line-height:14px">' + reason + '</span>';
+                return;
+            }
+            const openNow = d.st.state === 'open';
+            track.innerHTML = d.segs.map(([a, b]) =>
+                '<div class="tl-seg' + (openNow ? ' on' : '') + '" style="left:' + (a / 1440 * 100) + '%;width:' + (Math.max(b - a, 4) / 1440 * 100) + '%"></div>'
+            ).join('');
+        });
+        tlBody.style.display = 'flex';
+        tlBody.style.flexDirection = 'column';
+    }
+}
+
+tick();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>
